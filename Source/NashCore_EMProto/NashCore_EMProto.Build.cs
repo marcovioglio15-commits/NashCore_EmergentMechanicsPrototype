@@ -6,10 +6,13 @@ public class NashCore_EMProto : ModuleRules
 {
 	public NashCore_EMProto(ReadOnlyTargetRules Target) : base(Target)
 	{
+		// Enable explicit or shared precompiled headers to keep compile times predictable.
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput" });
+		// Expose core engine and input modules required by the simulation framework.
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GameplayTags", "NavigationSystem", "AIModule", "GameplayTasks" });
 
+		// No private-only dependencies are needed at this stage; keep the list explicit for clarity.
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 
 		// Uncomment if you are using Slate UI
