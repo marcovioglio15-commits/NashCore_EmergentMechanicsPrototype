@@ -51,15 +51,19 @@ public:
 	void StopClock();
 
 	// Sets the number of real seconds that equal one in-game minute.
+	UFUNCTION(BlueprintCallable, Category = "Village Clock")
 	void SetSecondsPerGameMinute(float InSecondsPerGameMinute);
 
 	// Retrieves the current hour.
+	UFUNCTION(BlueprintPure, Category = "Village Clock")
 	int32 GetCurrentHour() const;
 
 	// Retrieves the current minute.
+	UFUNCTION(BlueprintPure, Category = "Village Clock")
 	int32 GetCurrentMinute() const;
 
 	// Retrieves the current day phase.
+	UFUNCTION(BlueprintPure, Category = "Village Clock")
 	EVillageDayPhase GetCurrentPhase() const;
 
 	// Multicast delegate raised each minute.

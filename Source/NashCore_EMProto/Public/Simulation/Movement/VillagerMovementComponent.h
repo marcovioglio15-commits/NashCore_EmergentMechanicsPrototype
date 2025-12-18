@@ -58,6 +58,9 @@ private:
 	// Retrieves or caches the AI controller.
 	AAIController* ResolveAIController();
 
+	// Executes the pending delegate, deferring to avoid re-entrancy loops.
+	void DispatchMoveFinished(bool bSuccess);
+
 	// Cached movement definition settings.
 	UPROPERTY(EditAnywhere, Category = "Villager")
 	FMovementDefinition MovementDefinition;

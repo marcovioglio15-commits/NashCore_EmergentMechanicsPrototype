@@ -5,6 +5,8 @@
 #pragma region EngineIncludes
 // Adds logging utilities for debug output if needed.
 #include "Engine/Engine.h"
+// Provides access to AActor for destruction checks.
+#include "GameFramework/Actor.h"
 #pragma endregion EngineIncludes
 
 // Default constructor configuring component defaults.
@@ -31,6 +33,19 @@ void UVillagerNeedsComponent::ApplyNeedDelta(const FGameplayTag& NeedTag, float 
 		{
 			const float NewValue = NeedState.CurrentValue + Delta; // Compute unclamped value.
 			NeedState.CurrentValue = FMath::Clamp(NewValue, NeedState.Definition.MinValue, NeedState.Definition.MaxValue); // Clamp to configured range.
+			OnNeedsUpdated.Broadcast(this); // Notify listeners that needs have changed.
+
+			if (NeedState.CurrentValue <= NeedState.Definition.MinValue + KINDA_SMALL_NUMBER) // Destroy the villager when a need bottoms out.
+			{
+				if (AActor* OwnerActor = GetOwner())
+				{
+					if (OwnerActor->HasAuthority() && !OwnerActor->IsActorBeingDestroyed())
+					{
+						OwnerActor->Destroy(); // Trigger villager death on the authoritative instance.
+					}
+				}
+			}
+
 			return; // Exit after applying the delta.
 		}
 	}
@@ -81,6 +96,7 @@ void UVillagerNeedsComponent::SetArchetype(UVillagerArchetypeDataAsset* InArchet
 {
 	Archetype = InArchetype; // Store provided asset.
 	BuildRuntimeNeeds(); // Recreate runtime state.
+	OnNeedsUpdated.Broadcast(this); // Notify listeners after rebuilding needs.
 }
 
 // Builds runtime need states based on the archetype definitions.
@@ -90,6 +106,7 @@ void UVillagerNeedsComponent::BuildRuntimeNeeds()
 
 	if (!Archetype) // Validate the archetype asset.
 	{
+		OnNeedsUpdated.Broadcast(this); // Notify listeners that needs have been cleared.
 		return; // Abort if no data present.
 	}
 
@@ -101,6 +118,8 @@ void UVillagerNeedsComponent::BuildRuntimeNeeds()
 		RuntimeState.CurrentValue = FMath::Clamp(Definition.StartingValue, Definition.MinValue, Definition.MaxValue); // Initialize value within bounds.
 		RuntimeNeeds.Add(RuntimeState); // Add to array.
 	}
+
+	OnNeedsUpdated.Broadcast(this); // Notify listeners after rebuilding runtime data.
 }
 
 // Computes need urgency based on normalized value and thresholds.
@@ -109,17 +128,17 @@ EVillagerNeedUrgency UVillagerNeedsComponent::EvaluateUrgency(const FNeedRuntime
 	const float Range = FMath::Max(KINDA_SMALL_NUMBER, Need.Definition.MaxValue - Need.Definition.MinValue); // Avoid division by zero.
 	const float Normalized = (Need.CurrentValue - Need.Definition.MinValue) / Range; // Normalize to 0-1.
 
-	if (Normalized >= Need.Definition.Thresholds.CriticalThreshold) // Check critical band.
+	if (Normalized <= Need.Definition.Thresholds.CriticalThreshold) // Check critical band when satisfaction is very low.
 	{
 		return EVillagerNeedUrgency::Critical; // Mark as critical.
 	}
 
-	if (Normalized >= Need.Definition.Thresholds.MildThreshold) // Check mild band.
+	if (Normalized <= Need.Definition.Thresholds.MildThreshold) // Check mild band when satisfaction is moderately low.
 	{
 		return EVillagerNeedUrgency::Mild; // Mark as mild.
 	}
 
-	return EVillagerNeedUrgency::Satisfied; // Default to satisfied.
+	return EVillagerNeedUrgency::Satisfied; // Default to satisfied when above mild.
 }
 
 // Attempts to get a runtime need by tag.

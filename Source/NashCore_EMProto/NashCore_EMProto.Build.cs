@@ -10,10 +10,16 @@ public class NashCore_EMProto : ModuleRules
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
 		// Expose core engine and input modules required by the simulation framework.
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GameplayTags", "NavigationSystem", "AIModule", "GameplayTasks" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GameplayTags", "NavigationSystem", "AIModule", "GameplayTasks", "UMG", "Slate", "SlateCore" });
 
 		// No private-only dependencies are needed at this stage; keep the list explicit for clarity.
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
+
+		// Add editor-only dependencies when building with the editor to support commandlets.
+		if (Target.bBuildEditor) // Check for editor target configuration.
+		{
+			PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd" }); // Include UnrealEd for commandlet support.
+		}
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

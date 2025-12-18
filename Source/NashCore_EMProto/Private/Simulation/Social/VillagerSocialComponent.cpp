@@ -1,11 +1,14 @@
 // Includes the social component declaration.
-#include "Simulation/Social/VillagerSocialComponent.h"
+#include "Simulation/Social/VillagerSocialComponent.h" // Imports UVillagerSocialComponent definitions.
 
 // Region: Engine includes.
 #pragma region EngineIncludes
 // Provides access to on-screen debug logging if desired.
-#include "Engine/Engine.h"
+#include "Engine/Engine.h" // Imports engine logging utilities.
 #pragma endregion EngineIncludes
+
+// Region: Simulation includes.
+#include "Simulation/Logging/VillagerLogComponent.h" // Imports logging for affection updates.
 
 // Constructor configuring component defaults.
 UVillagerSocialComponent::UVillagerSocialComponent()
@@ -17,6 +20,8 @@ UVillagerSocialComponent::UVillagerSocialComponent()
 void UVillagerSocialComponent::BeginPlay()
 {
 	Super::BeginPlay(); // Preserve base initialization.
+
+	LogComponent = GetOwner() ? GetOwner()->FindComponentByClass<UVillagerLogComponent>() : nullptr; // Cache log component for affection updates.
 
 	RebuildAffectionFromArchetype(); // Build affection map.
 }
@@ -48,16 +53,27 @@ float UVillagerSocialComponent::RequestResource(const FGameplayTag& RequesterId,
 }
 
 // Applies a penalty when the buyer misses the seller.
-void UVillagerSocialComponent::RegisterMissedTrade(const FGameplayTag& BuyerId)
+void UVillagerSocialComponent::RegisterMissedTrade(const FGameplayTag& OtherVillagerId)
 {
 	if (!Archetype) // Validate archetype presence.
 	{
 		return; // Abort if missing.
 	}
 
-	const float Current = GetOrAddAffection(BuyerId); // Fetch existing affection.
+	const float Current = GetOrAddAffection(OtherVillagerId); // Fetch existing affection.
 	const float NewValue = Current - Archetype->SocialDefinition.AffectionLossOnMiss; // Apply loss.
-	AffectionMap.Add(BuyerId, NewValue); // Store updated value.
+	AffectionMap.Add(OtherVillagerId, NewValue); // Store updated value.
+
+	if (LogComponent) // Emit affection loss log.
+	{
+		LogComponent->LogMessage(FString::Printf(TEXT("Affection toward %s decreased to %.3f (missed trade)."),
+			*UVillagerLogComponent::GetShortTagString(OtherVillagerId),
+			NewValue)); // Compose affection loss log.
+	}
+	else // Provide a standard log fallback when no UI log is available.
+	{
+		UE_LOG(LogTemp, Log, TEXT("Affection toward %s decreased to %.3f (missed trade)."), *UVillagerLogComponent::GetShortTagString(OtherVillagerId), NewValue); // Emit log to standard output for debugging. 
+	}
 }
 
 // Allows overriding the archetype asset at runtime.
@@ -65,6 +81,38 @@ void UVillagerSocialComponent::SetArchetype(UVillagerArchetypeDataAsset* InArche
 {
 	Archetype = InArchetype; // Store new archetype.
 	RebuildAffectionFromArchetype(); // Recompute affection from new data.
+}
+
+// Returns the resource provided by this villager.
+FGameplayTag UVillagerSocialComponent::GetProvidedResourceTag() const
+{
+	return Archetype ? Archetype->SocialDefinition.ProvidedResourceTag : FGameplayTag(); // Return configured or empty tag.
+}
+
+// Returns the list of trade location tags.
+TArray<FGameplayTag> UVillagerSocialComponent::GetTradeLocationTags() const
+{
+	TArray<FGameplayTag> Tags; // Container for tags.
+	if (Archetype) // Validate archetype.
+	{
+		for (const FTaggedLocation& Location : Archetype->SocialDefinition.TradeLocations) // Iterate trade locations.
+		{
+			Tags.Add(Location.LocationTag); // Collect tag.
+		}
+	}
+	return Tags; // Return collected tags.
+}
+
+// Returns the villager identifier tag.
+FGameplayTag UVillagerSocialComponent::GetVillagerIdTag() const
+{
+	return Archetype ? Archetype->VillagerIdTag : FGameplayTag(); // Return id tag or empty.
+}
+
+// Returns a copy of the current affection map.
+TMap<FGameplayTag, float> UVillagerSocialComponent::GetAffectionSnapshot() const
+{
+	return AffectionMap; // Return snapshot of affection values.
 }
 
 // Retrieves affection for a villager, creating an entry if absent.
@@ -94,6 +142,18 @@ void UVillagerSocialComponent::ApplyTradeAffectionAdjustments(const FGameplayTag
 	const float NewBuyerAffection = CurrentBuyerAffection + Archetype->SocialDefinition.BuyerAffectionGainOnTrade * UrgencyMultiplier; // Compute buyer gain.
 	const float NewSellerAffection = NewBuyerAffection + Archetype->SocialDefinition.SellerAffectionGainPerTrade; // Compute seller gain stacking on buyer gain.
 	AffectionMap.Add(RequesterId, NewSellerAffection); // Store combined affection.
+
+	if (LogComponent) // Emit affection update log.
+	{
+		LogComponent->LogMessage(FString::Printf(TEXT("Affection toward %s updated to %.3f (trade, %s)."),
+			*UVillagerLogComponent::GetShortTagString(RequesterId),
+			NewSellerAffection,
+			NeedUrgency == EVillagerNeedUrgency::Critical ? TEXT("critical") : TEXT("mild"))); // Compose affection log message.
+	}
+	else // Provide standard logging when the UI log component is unavailable.
+	{
+		UE_LOG(LogTemp, Log, TEXT("Affection toward %s updated to %.3f (trade, %s)."), *UVillagerLogComponent::GetShortTagString(RequesterId), NewSellerAffection, NeedUrgency == EVillagerNeedUrgency::Critical ? TEXT("critical") : TEXT("mild")); // Emit log to standard output for debugging. 
+	}
 }
 
 // Rebuilds the affection map from the archetype approvals.

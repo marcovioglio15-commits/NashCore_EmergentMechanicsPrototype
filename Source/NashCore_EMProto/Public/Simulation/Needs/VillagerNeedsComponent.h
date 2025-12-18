@@ -11,6 +11,9 @@
 #include "Simulation/Data/VillagerDataAssets.h"
 #pragma endregion Includes
 
+// Forward declaration to support delegate declaration.
+class UVillagerNeedsComponent;
+
 // Generated header include for reflection support.
 #include "VillagerNeedsComponent.generated.h"
 
@@ -18,9 +21,9 @@
 UENUM(BlueprintType)
 enum class EVillagerNeedUrgency : uint8
 {
-	Satisfied, // Value is below mild threshold.
-	Mild, // Value is above mild but below critical threshold.
-	Critical // Value is above critical threshold.
+	Satisfied, // Value is comfortably high and above mild threshold.
+	Mild, // Value has dropped below mild but above critical threshold.
+	Critical // Value is at or below the critical threshold.
 };
 
 // Captures runtime state for a single need with its static definition.
@@ -42,6 +45,9 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Need")
 	FNeedDefinition Definition;
 };
+
+// Delegate fired whenever the needs state changes.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnVillagerNeedsUpdated, UVillagerNeedsComponent*, NeedsComponent);
 
 // Component responsible for tracking and evaluating villager needs.
 UCLASS(ClassGroup = (Simulation), Blueprintable, meta = (BlueprintSpawnableComponent))
@@ -71,6 +77,10 @@ public:
 	// Sets the archetype asset and rebuilds runtime needs.
 	void SetArchetype(UVillagerArchetypeDataAsset* InArchetype);
 
+	// Delegate fired whenever needs data is updated.
+	UPROPERTY(BlueprintAssignable, Category = "Need")
+	FOnVillagerNeedsUpdated OnNeedsUpdated;
+
 private:
 	// Creates runtime states from the configured archetype.
 	void BuildRuntimeNeeds();
@@ -80,6 +90,7 @@ private:
 
 	// Retrieves a runtime state by need tag.
 	bool TryGetRuntimeNeed(const FGameplayTag& NeedTag, FNeedRuntimeState& OutNeed) const;
+
 
 	// Archetype asset that defines needs and activities for this villager.
 	UPROPERTY(EditAnywhere, Category = "Villager")

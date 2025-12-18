@@ -11,7 +11,12 @@
 #include "Navigation/PathFollowingComponent.h"
 // Provides pathfinding request helpers.
 #include "NavigationSystem.h"
+// Enables dispatching callbacks on the game thread without deep recursion.
+#include "Async/Async.h"
 #pragma endregion EngineIncludes
+
+// Local log category for movement diagnostics.
+DEFINE_LOG_CATEGORY_STATIC(LogVillagerMovement, Log, All);
 
 // Constructor setting default component properties.
 UVillagerMovementComponent::UVillagerMovementComponent()
@@ -40,10 +45,16 @@ void UVillagerMovementComponent::RequestMoveToLocation(const FTransform& TargetT
 
 	if (!Controller) // Validate controller availability.
 	{
-		if (PendingDelegate.IsBound()) // Check for a bound delegate.
-		{
-			PendingDelegate.Execute(false); // Signal failure due to missing controller.
-		}
+		UE_LOG(LogVillagerMovement, Warning, TEXT("Cannot request move: AI controller not resolved for %s"), *GetNameSafe(GetOwner()));
+		DispatchMoveFinished(false); // Fail fast when controller is missing.
+		return; // Abort request.
+	}
+
+	UNavigationSystemV1* NavSystem = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()); // Access nav system.
+	if (!NavSystem || !NavSystem->GetDefaultNavDataInstance(FNavigationSystem::DontCreate)) // Validate nav data.
+	{
+		UE_LOG(LogVillagerMovement, Warning, TEXT("Cannot request move: navigation data unavailable for %s"), *GetNameSafe(GetOwner()));
+		DispatchMoveFinished(false); // Fail fast when nav mesh is missing.
 		return; // Abort request.
 	}
 
@@ -58,6 +69,12 @@ void UVillagerMovementComponent::RequestMoveToLocation(const FTransform& TargetT
 	FNavPathSharedPtr OutPath; // Placeholder for generated path.
 	const FPathFollowingRequestResult RequestResult = Controller->MoveTo(MoveRequest, &OutPath); // Issue move request.
 
+	if (RequestResult.Code == EPathFollowingRequestResult::AlreadyAtGoal) // Handle immediate success when already at destination.
+	{
+		DispatchMoveFinished(true); // Immediately signal success to caller.
+		return; // Skip binding because nothing will move.
+	}
+
 	if (RequestResult.Code == EPathFollowingRequestResult::RequestSuccessful) // Validate success.
 	{
 		ActiveRequestId = RequestResult.MoveId; // Cache request id.
@@ -65,10 +82,9 @@ void UVillagerMovementComponent::RequestMoveToLocation(const FTransform& TargetT
 	}
 	else // Handle failure cases.
 	{
-		if (PendingDelegate.IsBound()) // Check bound delegate.
-		{
-			PendingDelegate.Execute(false); // Signal failure.
-		}
+		ActiveRequestId = FAIRequestID::InvalidRequest; // Reset invalid request id on failure.
+		UE_LOG(LogVillagerMovement, Warning, TEXT("Move request failed for %s with result %s"), *GetNameSafe(GetOwner()), *UEnum::GetValueAsString(RequestResult.Code));
+		DispatchMoveFinished(false); // Defer failure notification to avoid recursion.
 	}
 }
 
@@ -89,6 +105,8 @@ void UVillagerMovementComponent::ApplyMovementDefinition(const FMovementDefiniti
 		{
 			CharacterMovement->MaxWalkSpeed = MovementDefinition.WalkSpeed; // Apply speed.
 			CharacterMovement->MaxAcceleration = MovementDefinition.MaxAcceleration; // Apply acceleration.
+			CharacterMovement->bOrientRotationToMovement = true; // Face direction of travel.
+			CharacterMovement->RotationRate = FRotator(0.f, 540.f, 0.f); // Smooth turning speed.
 		}
 	}
 }
@@ -107,10 +125,7 @@ void UVillagerMovementComponent::HandleMoveCompleted(FAIRequestID RequestId, EPa
 
 	ActiveRequestId = FAIRequestID::InvalidRequest; // Reset active id.
 
-	if (PendingDelegate.IsBound()) // Check for bound callback.
-	{
-		PendingDelegate.Execute(bSuccess); // Execute callback with success flag.
-	}
+	DispatchMoveFinished(bSuccess); // Notify caller on completion.
 }
 
 // Removes the move completed delegate binding safely.
@@ -140,4 +155,24 @@ AAIController* UVillagerMovementComponent::ResolveAIController()
 	CachedAIController = Cast<AAIController>(PawnOwner->GetController()); // Cache AI controller.
 
 	return CachedAIController; // Return controller (may be null).
+}
+
+// Dispatches the pending delegate on the game thread while preventing re-entrancy.
+void UVillagerMovementComponent::DispatchMoveFinished(bool bSuccess)
+{
+	if (!PendingDelegate.IsBound()) // Nothing to execute.
+	{
+		return;
+	}
+
+	const FOnVillagerMovementFinished DelegateCopy = PendingDelegate; // Copy to local to avoid invalidation.
+	PendingDelegate.Unbind(); // Clear stored delegate to prevent duplicate calls.
+
+	AsyncTask(ENamedThreads::GameThread, [DelegateCopy, bSuccess]() mutable // Defer to next tick to avoid recursive call chains.
+	{
+		if (DelegateCopy.IsBound())
+		{
+			DelegateCopy.Execute(bSuccess); // Notify caller of move result.
+		}
+	});
 }
