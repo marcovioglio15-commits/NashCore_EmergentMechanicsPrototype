@@ -33,11 +33,11 @@ struct FNeedThresholds
 public:
 	// Lower bound above which the need is considered mild.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Need")
-	float MildThreshold = 0.5f;
+	float MildThreshold = 0.8f;
 
 	// Lower bound above which the need is considered critical.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Need")
-	float CriticalThreshold = 0.8f;
+	float CriticalThreshold = 0.5f;
 };
 
 // Declares a designer-editable definition for a villager need.
@@ -70,6 +70,10 @@ public:
 	// Priority weight used to resolve ties when multiple needs are critical.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Need")
 	float PriorityWeight = 1.0f;
+
+	// Curve mapping normalized need value (0-1) to probability of forcing a satisfying activity.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Need")
+	UCurveFloat* ForceActivityProbabilityCurve = nullptr;
 
 	// Activity tag that satisfies this need when executed.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Need")
@@ -135,11 +139,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Activity")
 	bool bRequiresSpecificLocation = false;
 
-	// Transform that represents the activity place if location is required.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Activity", meta = (EditCondition = "bRequiresSpecificLocation"))
-	FTransform ActivityLocation;
-
-	// Optional location tag used by designers to describe the place semantically.
+	// Location tag used to resolve the activity position through tagged actors in the world.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Activity", meta = (EditCondition = "bRequiresSpecificLocation"))
 	FGameplayTag ActivityLocationTag;
 
@@ -195,6 +195,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Social")
 	TArray<FTaggedLocation> TradeLocations;
 
+	// Cooldown in seconds after completing a trade before new activities can begin.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Social")
+	float PostTradeCooldownSeconds = 0.25f;
+
 	// Amount by which the buyer's affection increases when trade succeeds.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Social")
 	float BuyerAffectionGainOnTrade = 0.05f;
@@ -235,6 +239,10 @@ class UVillagerArchetypeDataAsset : public UDataAsset
 	GENERATED_BODY() // Adds UObject constructors and reflection metadata.
 
 public:
+	// Unique identifier for this villager instance used in logging and social interactions.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Villager|Identity")
+	FGameplayTag VillagerIdTag;
+
 	// Collection of needs that define this villager's internal drives.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Villager|Needs")
 	TArray<FNeedDefinition> NeedDefinitions;

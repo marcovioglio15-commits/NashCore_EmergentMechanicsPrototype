@@ -15,6 +15,8 @@
 #include "Simulation/Movement/VillagerMovementComponent.h"
 // Imports logging component.
 #include "Simulation/Logging/VillagerLogComponent.h"
+// Imports needs display component.
+#include "Simulation/UI/VillagerNeedsDisplayComponent.h"
 #pragma endregion Includes
 
 // Generated header required for reflection.
@@ -57,4 +59,8 @@ private:
 	// Log component instance.
 	UPROPERTY(VisibleAnywhere, Category = "Villager")
 	TObjectPtr<UVillagerLogComponent> LogComponent;
+
+	// Needs display component instance for world-space UI.
+	UPROPERTY(VisibleAnywhere, Category = "Villager")
+	TObjectPtr<UVillagerNeedsDisplayComponent> NeedsDisplayComponent;
 };
